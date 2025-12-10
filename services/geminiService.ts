@@ -1,20 +1,15 @@
 import { GoogleGenAI } from "@google/genai";
 import { Dimension, Software } from "../types";
 
-const apiKey = process.env.API_KEY || '';
-
-// Initialize Gemini client only when needed to avoid early initialization errors if key is missing initially
-const getAiClient = () => new GoogleGenAI({ apiKey });
-
 export const generateComparisonAnalysis = async (
   dimensions: Dimension[],
   softwares: Software[]
 ): Promise<string> => {
-  if (!apiKey) {
+  if (!process.env.API_KEY) {
     return "API Key is missing. Please ensure process.env.API_KEY is set.";
   }
 
-  const ai = getAiClient();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const dataContext = JSON.stringify({
     dimensions: dimensions.map(d => d.name),

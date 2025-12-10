@@ -125,35 +125,32 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-gray-900 text-gray-100">
+    <div className="min-h-screen flex flex-col bg-gray-900 text-gray-100">
       
-      {/* Sidebar / Navigation */}
-      <aside className="w-full md:w-56 bg-gray-800 border-r border-gray-700 flex flex-col shrink-0 transition-all duration-300">
-        <div className="p-6 border-b border-gray-700 flex items-center space-x-2">
-          <ShieldCheck className="text-blue-500 shrink-0" size={28} />
-          <h1 className="text-lg font-bold tracking-tight text-white whitespace-nowrap">杀软能力对比</h1>
+      {/* Top Header Bar - Replaces Sidebar */}
+      <header className="flex flex-col md:flex-row items-center justify-between px-6 py-4 bg-gray-800 border-b border-gray-700 sticky top-0 z-40 shadow-md">
+        <div className="flex items-center space-x-3 mb-4 md:mb-0">
+          <ShieldCheck className="text-blue-500 shrink-0" size={32} />
+          <h1 className="text-xl font-bold tracking-tight text-white">杀软能力对比</h1>
         </div>
         
-        <nav className="flex-1 p-4 space-y-4 overflow-y-auto">
-          <div className="space-y-2">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">操作控制</h3>
-            <button 
+        <div className="flex items-center gap-3 w-full md:w-auto">
+           <button 
               onClick={() => setShowAddSoftware(true)}
-              className="w-full flex items-center justify-between p-3 bg-gray-700/50 hover:bg-gray-700 rounded-lg transition text-sm group"
+              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg transition-all text-sm font-medium border border-gray-600 hover:border-gray-500"
             >
-              <span className="group-hover:text-white text-gray-300">添加软件</span>
-              <Plus size={16} className="text-gray-400 group-hover:text-white" />
+              <Plus size={16} />
+              <span>添加软件</span>
             </button>
             <button 
               onClick={() => setShowAddDimension(true)}
-              className="w-full flex items-center justify-between p-3 bg-gray-700/50 hover:bg-gray-700 rounded-lg transition text-sm group"
+              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all text-sm font-medium shadow-lg shadow-blue-900/20"
             >
-              <span className="group-hover:text-white text-gray-300">添加对比维度</span>
-              <Plus size={16} className="text-gray-400 group-hover:text-white" />
+              <Plus size={16} />
+              <span>添加对比维度</span>
             </button>
-          </div>
-        </nav>
-      </aside>
+        </div>
+      </header>
 
       {/* Main Content */}
       <main className="flex-1 p-4 md:p-8 overflow-y-auto">
@@ -181,8 +178,8 @@ function App() {
              </div>
              <p className="text-xl font-bold text-white truncate">
                 {softwares.length > 0 ? softwares.reduce((prev, current) => {
-                  const prevTotal = Object.values(prev.scores).reduce((a, b) => a + b, 0);
-                  const currTotal = Object.values(current.scores).reduce((a, b) => a + b, 0);
+                  const prevTotal = Object.values(prev.scores).reduce((a: number, b: number) => a + b, 0);
+                  const currTotal = Object.values(current.scores).reduce((a: number, b: number) => a + b, 0);
                   return prevTotal > currTotal ? prev : current;
                 }).name : "暂无"}
              </p>
