@@ -3,6 +3,7 @@ import { INITIAL_DIMENSIONS, INITIAL_SOFTWARES } from './constants';
 import { Dimension, Software } from './types';
 import RadarChartVis from './components/RadarChartVis';
 import ComparisonTable from './components/ComparisonTable';
+import { arrayMove } from '@dnd-kit/sortable';
 import { 
   ShieldCheck, 
   Plus, 
@@ -124,6 +125,15 @@ function App() {
     setDimensions(prev => prev.filter(d => d.id !== id));
   };
 
+  // --- Drag and Drop Handlers ---
+  const handleReorderSoftwares = (oldIndex: number, newIndex: number) => {
+    setSoftwares((items) => arrayMove(items, oldIndex, newIndex));
+  };
+
+  const handleReorderDimensions = (oldIndex: number, newIndex: number) => {
+    setDimensions((items) => arrayMove(items, oldIndex, newIndex));
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-900 text-gray-100">
       
@@ -196,7 +206,7 @@ function App() {
           <div className="flex flex-col space-y-4">
             <div className="flex justify-between items-center">
                <h2 className="text-xl font-semibold text-white">详细评分与描述</h2>
-               <span className="text-sm text-gray-400">评分越高越好 (0-10)</span>
+               <span className="text-sm text-gray-400">拖拽软件名或维度名可调整排序</span>
             </div>
             <ComparisonTable 
               dimensions={dimensions} 
@@ -205,6 +215,8 @@ function App() {
               onEditDescription={handleOpenDescriptionModal}
               onDeleteDimension={handleDeleteDimension}
               onDeleteSoftware={handleDeleteSoftware}
+              onReorderSoftwares={handleReorderSoftwares}
+              onReorderDimensions={handleReorderDimensions}
             />
           </div>
         </div>
