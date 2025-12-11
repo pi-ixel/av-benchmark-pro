@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Dimension, Software } from '../types';
-import { Trash2, Plus, FileText, Edit2, GripVertical } from 'lucide-react';
+import { Trash2, Plus, FileText, Edit2, GripVertical, Settings, Check, X } from 'lucide-react';
 import {
   DndContext,
   closestCenter,
@@ -29,6 +29,8 @@ interface ComparisonTableProps {
   onDeleteSoftware: (id: string) => void;
   onReorderSoftwares: (oldIndex: number, newIndex: number) => void;
   onReorderDimensions: (oldIndex: number, newIndex: number) => void;
+  onUpdateSoftwareDetails: (id: string, name: string, color: string) => void;
+  onUpdateDimensionName: (id: string, name: string) => void;
 }
 
 // --- Sortable Components ---
@@ -37,6 +39,7 @@ interface SortableHeaderProps {
   id: string;
   software: Software;
   onDelete: (id: string) => void;
+  onUpdateDetails: (id: string, name: string, color: string) => void;
 }
 
 // Sortable Header (Column)
@@ -44,6 +47,7 @@ const SortableHeader: React.FC<SortableHeaderProps> = ({
   id,
   software,
   onDelete,
+  onUpdateDetails,
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id });
@@ -55,30 +59,123 @@ const SortableHeader: React.FC<SortableHeaderProps> = ({
     zIndex: isDragging ? 999 : 'auto',
   };
 
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(software.name);
+  const [editColor, setEditColor] = useState(software.color);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  // Close popover on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+        if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
+            setIsEditing(false);
+        }
+    };
+    if (isEditing) {
+        document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isEditing]);
+
+  const handleSave = () => {
+      onUpdateDetails(software.id, editName, editColor);
+      setIsEditing(false);
+  };
+
   return (
     <th
       ref={setNodeRef}
       style={style}
       className="px-2 py-4 text-center text-xs font-medium uppercase tracking-wider group relative min-w-[140px] bg-gray-900/95"
     >
-      <div className="flex items-center justify-center gap-2">
+      <div className="flex flex-col items-center justify-center gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            {...attributes}
+            {...listeners}
+            className="cursor-grab active:cursor-grabbing text-gray-600 hover:text-gray-300"
+            title="拖拽排序"
+          >
+            <GripVertical size={14} />
+          </button>
+          
+          <span 
+            className="font-bold text-sm truncate max-w-[120px]" 
+            style={{ color: software.color }}
+          >
+            {software.name}
+          </span>
+          
+          <button
+            onClick={() => {
+                setEditName(software.name);
+                setEditColor(software.color);
+                setIsEditing(true);
+            }}
+            className="text-gray-600 hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity"
+            title="编辑名称与颜色"
+          >
+            <Settings size={14} />
+          </button>
+        </div>
+
+        {/* Action Buttons (Absolute) */}
         <button
-          {...attributes}
-          {...listeners}
-          className="cursor-grab active:cursor-grabbing text-gray-600 hover:text-gray-300"
-          title="Drag to reorder"
+            onClick={() => onDelete(software.id)}
+            className="absolute top-1 right-1 text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+            title="删除该软件"
         >
-          <GripVertical size={14} />
+            <Trash2 size={14} />
         </button>
-        <span style={{ color: software.color }}>{software.name}</span>
       </div>
-      <button
-        onClick={() => onDelete(software.id)}
-        className="absolute top-1 right-1 text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-        title="删除该软件"
-      >
-        <Trash2 size={14} />
-      </button>
+
+      {/* Edit Popover */}
+      {isEditing && (
+        <div 
+            ref={popoverRef}
+            className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-56 bg-gray-800 border border-gray-600 rounded-lg shadow-xl p-3 z-50 flex flex-col gap-3 text-left"
+            onMouseDown={(e) => e.stopPropagation()} // Prevent drag start
+        >
+            <div className="flex flex-col gap-1">
+                <label className="text-[10px] text-gray-400 uppercase">软件名称</label>
+                <input 
+                    type="text" 
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full bg-gray-900 border border-gray-700 rounded p-1.5 text-white text-sm focus:border-blue-500 outline-none"
+                    autoFocus
+                />
+            </div>
+            <div className="flex flex-col gap-1">
+                <label className="text-[10px] text-gray-400 uppercase">代表色</label>
+                <div className="flex items-center gap-2">
+                    <input 
+                        type="color" 
+                        value={editColor}
+                        onChange={(e) => setEditColor(e.target.value)}
+                        className="w-8 h-8 rounded cursor-pointer bg-transparent border-none p-0"
+                    />
+                    <span className="text-xs text-gray-400 font-mono">{editColor}</span>
+                </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-1">
+                <button 
+                    onClick={() => setIsEditing(false)}
+                    className="px-2 py-1 text-xs text-gray-400 hover:text-white"
+                >
+                    取消
+                </button>
+                <button 
+                    onClick={handleSave}
+                    className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded"
+                >
+                    保存
+                </button>
+            </div>
+        </div>
+      )}
     </th>
   );
 };
@@ -88,6 +185,7 @@ interface SortableRowProps {
   dimension: Dimension;
   children: React.ReactNode;
   onDelete: (id: string) => void;
+  onUpdateName: (id: string, name: string) => void;
 }
 
 // Sortable Row (Dimension)
@@ -96,6 +194,7 @@ const SortableRow: React.FC<SortableRowProps> = ({
   dimension,
   children,
   onDelete,
+  onUpdateName,
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id });
@@ -105,7 +204,19 @@ const SortableRow: React.FC<SortableRowProps> = ({
     transition,
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 999 : 'auto',
-    position: isDragging ? 'relative' as const : undefined, // Fix z-index stacking context
+    position: isDragging ? 'relative' as const : undefined,
+  };
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(dimension.name);
+
+  const handleSave = () => {
+    if (editName.trim()) {
+        onUpdateName(dimension.id, editName);
+    } else {
+        setEditName(dimension.name); // Revert if empty
+    }
+    setIsEditing(false);
   };
 
   return (
@@ -114,19 +225,53 @@ const SortableRow: React.FC<SortableRowProps> = ({
       style={style}
       className={`hover:bg-gray-700/30 transition-colors group/row ${isDragging ? 'bg-gray-700/50' : ''}`}
     >
-      <td className="px-4 py-4 text-sm font-medium text-gray-300 sticky left-0 bg-gray-800 z-10 align-top shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)]">
-        <div className="flex items-center gap-2 mt-2">
+      <td className="px-4 py-4 text-sm font-medium text-gray-300 sticky left-0 bg-gray-800 z-10 align-top shadow-[2px_0_5px_-2px_rgba(0,0,0,0.5)] min-w-[150px]">
+        <div className="flex items-center gap-2 mt-2 w-full">
           <div
              {...attributes}
              {...listeners}
-             className="cursor-grab active:cursor-grabbing text-gray-600 hover:text-gray-400 p-1 -ml-2"
+             className="cursor-grab active:cursor-grabbing text-gray-600 hover:text-gray-400 p-1 -ml-2 shrink-0"
           >
              <GripVertical size={14} />
           </div>
-          <span>{dimension.name}</span>
+          
+          {isEditing ? (
+             <div className="flex items-center gap-1 w-full">
+                <input 
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSave();
+                        if (e.key === 'Escape') {
+                            setEditName(dimension.name);
+                            setIsEditing(false);
+                        }
+                    }}
+                    onBlur={handleSave}
+                    autoFocus
+                    className="w-full bg-gray-900 border border-blue-500 rounded px-2 py-1 text-sm outline-none"
+                />
+             </div>
+          ) : (
+            <>
+                <span className="truncate" title={dimension.name}>{dimension.name}</span>
+                <button
+                    onClick={() => {
+                        setEditName(dimension.name);
+                        setIsEditing(true);
+                    }}
+                    className="text-gray-600 hover:text-blue-400 p-1 opacity-0 group-hover/row:opacity-100 transition-opacity ml-1"
+                    title="编辑名称"
+                >
+                    <Edit2 size={12} />
+                </button>
+            </>
+          )}
+
            <button
             onClick={() => onDelete(dimension.id)}
-            className="text-gray-600 hover:text-red-400 transition-colors p-1 rounded opacity-0 group-hover/row:opacity-100 ml-auto"
+            className="text-gray-600 hover:text-red-400 transition-colors p-1 rounded opacity-0 group-hover/row:opacity-100 ml-auto shrink-0"
             title="删除该维度"
           >
             <Trash2 size={14} />
@@ -149,6 +294,8 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({
   onDeleteSoftware,
   onReorderSoftwares,
   onReorderDimensions,
+  onUpdateSoftwareDetails,
+  onUpdateDimensionName,
 }) => {
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -167,7 +314,6 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({
     if (!over) return;
     if (active.id === over.id) return;
 
-    // Determine if we are dragging a Software (column) or a Dimension (row)
     const activeId = active.id as string;
     const overId = over.id as string;
 
@@ -195,7 +341,7 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({
       collisionDetection={closestCenter}
       onDragEnd={handleDragEnd}
     >
-      <div className="overflow-x-auto bg-gray-800 rounded-xl shadow-lg border border-gray-700">
+      <div className="overflow-x-auto bg-gray-800 rounded-xl shadow-lg border border-gray-700 min-h-[300px]">
         <table className="min-w-full divide-y divide-gray-700">
           <thead className="bg-gray-900/50">
             <tr>
@@ -213,6 +359,7 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({
                     id={sw.id}
                     software={sw}
                     onDelete={onDeleteSoftware}
+                    onUpdateDetails={onUpdateSoftwareDetails}
                   />
                 ))}
               </SortableContext>
@@ -229,6 +376,7 @@ const ComparisonTable: React.FC<ComparisonTableProps> = ({
                   id={dim.id}
                   dimension={dim}
                   onDelete={onDeleteDimension}
+                  onUpdateName={onUpdateDimensionName}
                 >
                   {/* Render cells for this row */}
                   {softwares.map((sw) => {

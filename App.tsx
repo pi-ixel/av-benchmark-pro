@@ -125,6 +125,18 @@ function App() {
     }));
   }, []);
 
+  const handleUpdateSoftwareDetails = useCallback((id: string, name: string, color: string) => {
+    setSoftwares(prev => prev.map(sw => 
+      sw.id === id ? { ...sw, name, color } : sw
+    ));
+  }, []);
+
+  const handleUpdateDimensionName = useCallback((id: string, name: string) => {
+    setDimensions(prev => prev.map(dim => 
+      dim.id === id ? { ...dim, name } : dim
+    ));
+  }, []);
+
   const handleOpenDescriptionModal = useCallback((softwareId: string, dimensionId: string) => {
     const sw = softwares.find(s => s.id === softwareId);
     const dim = dimensions.find(d => d.id === dimensionId);
@@ -189,11 +201,15 @@ function App() {
   };
 
   const handleDeleteSoftware = (id: string) => {
-    setSoftwares(prev => prev.filter(s => s.id !== id));
+    if (window.confirm("确定要删除该软件吗？")) {
+      setSoftwares(prev => prev.filter(s => s.id !== id));
+    }
   };
 
   const handleDeleteDimension = (id: string) => {
-    setDimensions(prev => prev.filter(d => d.id !== id));
+    if (window.confirm("确定要删除该维度吗？")) {
+      setDimensions(prev => prev.filter(d => d.id !== id));
+    }
   };
 
   // Reset Handler
@@ -273,35 +289,29 @@ function App() {
         // Parse Header
         const headers = parseCSVLine(lines[0]); 
         // Expected: Dimension, Type, Software1, Software2...
-        
         if (headers.length < 3) throw new Error('CSV must have at least Dimension, Type and one Software column');
 
+        // Extract Software Names (Columns 2+)
         const softwareNames = headers.slice(2);
-        const softwareIdMap: Record<number, string> = {}; // Index -> ID
         
-        // Sync Softwares (Update existing or Create new)
-        let updatedSoftwares = [...softwares];
-        
-        softwareNames.forEach((name, index) => {
-          const cleanName = name.trim();
-          let existing = updatedSoftwares.find(s => s.name === cleanName);
-          if (!existing) {
-             existing = {
-               id: generateId(),
-               name: cleanName,
-               color: `hsl(${Math.random() * 360}, 70%, 50%)`,
-               scores: {},
-               descriptions: {}
-             };
-             updatedSoftwares.push(existing);
-          }
-          softwareIdMap[index] = existing.id;
+        // 1. Create NEW Software List
+        // Preserve ID and Color if software name matches existing state
+        const newSoftwares: Software[] = softwareNames.map(name => {
+          const trimmedName = name.trim();
+          const existing = softwares.find(s => s.name === trimmedName);
+          
+          return {
+            id: existing ? existing.id : generateId(),
+            name: trimmedName,
+            color: existing ? existing.color : `hsl(${Math.random() * 360}, 70%, 50%)`,
+            scores: {},
+            descriptions: {}
+          };
         });
 
-        // Sync Dimensions & Data
-        let updatedDimensions = [...dimensions];
-
-        // Process rows
+        const newDimensions: Dimension[] = [];
+        
+        // 2. Process Data Rows
         for(let i = 1; i < lines.length; i++) {
            const row = parseCSVLine(lines[i]);
            if(row.length < 3) continue;
@@ -310,46 +320,39 @@ function App() {
            const type = row[1].trim().toLowerCase(); // 'score' or 'description'
            const values = row.slice(2);
 
-           let dim = updatedDimensions.find(d => d.name === dimName);
+           // Find or Create Dimension in our new list
+           let dim = newDimensions.find(d => d.name === dimName);
            if (!dim) {
              dim = {
                id: dimName.toLowerCase().replace(/\s+/g, '_') + '_' + generateId(),
                name: dimName
              };
-             updatedDimensions.push(dim);
+             newDimensions.push(dim);
            }
 
-           // Update values for each software in this row
+           // Update the corresponding software
            values.forEach((val, index) => {
-             const swId = softwareIdMap[index];
-             if (swId) {
-               const swIndex = updatedSoftwares.findIndex(s => s.id === swId);
-               if (swIndex !== -1) {
-                  if (type === 'score') {
-                    updatedSoftwares[swIndex] = {
-                      ...updatedSoftwares[swIndex],
-                      scores: {
-                        ...updatedSoftwares[swIndex].scores,
-                        [dim.id]: Number(val) || 0
-                      }
-                    };
-                  } else if (type === 'description') {
-                     updatedSoftwares[swIndex] = {
-                      ...updatedSoftwares[swIndex],
-                      descriptions: {
-                        ...updatedSoftwares[swIndex].descriptions,
-                        [dim.id]: val
-                      }
-                    };
-                  }
+             // Ensure index is within bounds of our new software list
+             if (index < newSoftwares.length) {
+               if (type === 'score') {
+                 newSoftwares[index].scores[dim!.id] = Number(val) || 0;
+               } else if (type === 'description') {
+                 newSoftwares[index].descriptions[dim!.id] = val;
                }
              }
            });
         }
 
-        setSoftwares(updatedSoftwares);
-        setDimensions(updatedDimensions);
-        alert('导入成功！');
+        // 3. Replace State Completely
+        if (newDimensions.length === 0 || newSoftwares.length === 0) {
+            alert("CSV文件似乎为空或格式不正确。");
+            return;
+        }
+
+        if (window.confirm(`即将导入:\n${newSoftwares.length} 个软件\n${newDimensions.length} 个维度\n\n注意：这将覆盖当前的表格数据！`)) {
+            setDimensions(newDimensions);
+            setSoftwares(newSoftwares);
+        }
 
       } catch (err) {
         console.error(err);
@@ -473,7 +476,7 @@ function App() {
           <div className="flex flex-col space-y-4">
             <div className="flex justify-between items-center">
                <h2 className="text-xl font-semibold text-white">详细评分与描述</h2>
-               <span className="text-sm text-gray-400">拖拽软件名或维度名可调整排序</span>
+               <span className="text-sm text-gray-400">点击软件或维度名旁的编辑图标修改名称与颜色；拖拽可调整排序。</span>
             </div>
             <ComparisonTable 
               dimensions={dimensions} 
@@ -484,6 +487,8 @@ function App() {
               onDeleteSoftware={handleDeleteSoftware}
               onReorderSoftwares={handleReorderSoftwares}
               onReorderDimensions={handleReorderDimensions}
+              onUpdateSoftwareDetails={handleUpdateSoftwareDetails}
+              onUpdateDimensionName={handleUpdateDimensionName}
             />
           </div>
         </div>
