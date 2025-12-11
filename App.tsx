@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { INITIAL_DIMENSIONS, INITIAL_SOFTWARES } from './constants';
 import { Dimension, Software } from './types';
 import RadarChartVis from './components/RadarChartVis';
@@ -11,11 +11,47 @@ import {
   Settings2,
   X,
   Save,
-  MessageSquare
+  MessageSquare,
+  Download,
+  Upload
 } from 'lucide-react';
 
 // Simple unique ID generator
 const generateId = () => Math.random().toString(36).substr(2, 9);
+
+// CSV Helper Functions
+const escapeCSV = (str: string | number | undefined) => {
+  if (str === null || str === undefined) return '';
+  const stringValue = String(str);
+  if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+  return stringValue;
+};
+
+const parseCSVLine = (line: string) => {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current);
+  return result;
+};
 
 function App() {
   const [dimensions, setDimensions] = useState<Dimension[]>(INITIAL_DIMENSIONS);
@@ -25,6 +61,9 @@ function App() {
   const [showAddSoftware, setShowAddSoftware] = useState(false);
   const [showAddDimension, setShowAddDimension] = useState(false);
   
+  // File Input Ref
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // State for Description Modal
   const [editingDesc, setEditingDesc] = useState<{
     swId: string;
@@ -134,9 +173,166 @@ function App() {
     setDimensions((items) => arrayMove(items, oldIndex, newIndex));
   };
 
+  // --- Import / Export Handlers ---
+  const handleExportCSV = () => {
+    // 1. Header Row: Dimension, Type, [Software Names...]
+    const headers = ['Dimension', 'Type', ...softwares.map(s => escapeCSV(s.name))];
+    const csvRows = [headers.join(',')];
+
+    // 2. Data Rows
+    dimensions.forEach(dim => {
+      // Score Row
+      const scoreRow = [
+        escapeCSV(dim.name),
+        'Score',
+        ...softwares.map(s => s.scores[dim.id] || 0)
+      ];
+      csvRows.push(scoreRow.join(','));
+
+      // Description Row
+      const descRow = [
+        escapeCSV(dim.name),
+        'Description',
+        ...softwares.map(s => escapeCSV(s.descriptions[dim.id] || ''))
+      ];
+      csvRows.push(descRow.join(','));
+    });
+
+    // 3. Download
+    const csvString = '\uFEFF' + csvRows.join('\n'); // Add BOM for Excel UTF-8
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `av_comparison_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleImportClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      if (!text) return;
+
+      try {
+        const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+        if (lines.length < 2) throw new Error('Invalid CSV format');
+
+        // Parse Header
+        const headers = parseCSVLine(lines[0]); 
+        // Expected: Dimension, Type, Software1, Software2...
+        
+        if (headers.length < 3) throw new Error('CSV must have at least Dimension, Type and one Software column');
+
+        const softwareNames = headers.slice(2);
+        const softwareIdMap: Record<number, string> = {}; // Index -> ID
+        
+        // Sync Softwares (Update existing or Create new)
+        let updatedSoftwares = [...softwares];
+        
+        softwareNames.forEach((name, index) => {
+          const cleanName = name.trim();
+          let existing = updatedSoftwares.find(s => s.name === cleanName);
+          if (!existing) {
+             existing = {
+               id: generateId(),
+               name: cleanName,
+               color: `hsl(${Math.random() * 360}, 70%, 50%)`,
+               scores: {},
+               descriptions: {}
+             };
+             updatedSoftwares.push(existing);
+          }
+          softwareIdMap[index] = existing.id;
+        });
+
+        // Sync Dimensions & Data
+        let updatedDimensions = [...dimensions];
+
+        // Process rows
+        for(let i = 1; i < lines.length; i++) {
+           const row = parseCSVLine(lines[i]);
+           if(row.length < 3) continue;
+           
+           const dimName = row[0].trim();
+           const type = row[1].trim().toLowerCase(); // 'score' or 'description'
+           const values = row.slice(2);
+
+           let dim = updatedDimensions.find(d => d.name === dimName);
+           if (!dim) {
+             dim = {
+               id: dimName.toLowerCase().replace(/\s+/g, '_') + '_' + generateId(),
+               name: dimName
+             };
+             updatedDimensions.push(dim);
+           }
+
+           // Update values for each software in this row
+           values.forEach((val, index) => {
+             const swId = softwareIdMap[index];
+             if (swId) {
+               const swIndex = updatedSoftwares.findIndex(s => s.id === swId);
+               if (swIndex !== -1) {
+                  if (type === 'score') {
+                    updatedSoftwares[swIndex] = {
+                      ...updatedSoftwares[swIndex],
+                      scores: {
+                        ...updatedSoftwares[swIndex].scores,
+                        [dim.id]: Number(val) || 0
+                      }
+                    };
+                  } else if (type === 'description') {
+                     updatedSoftwares[swIndex] = {
+                      ...updatedSoftwares[swIndex],
+                      descriptions: {
+                        ...updatedSoftwares[swIndex].descriptions,
+                        [dim.id]: val
+                      }
+                    };
+                  }
+               }
+             }
+           });
+        }
+
+        setSoftwares(updatedSoftwares);
+        setDimensions(updatedDimensions);
+        alert('导入成功！');
+
+      } catch (err) {
+        console.error(err);
+        alert('导入失败，请检查文件格式是否正确。');
+      }
+      
+      // Reset input
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-900 text-gray-100">
       
+      {/* Hidden File Input */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleFileChange} 
+        accept=".csv" 
+        className="hidden" 
+      />
+
       {/* Top Header Bar - Replaces Sidebar */}
       <header className="flex flex-col md:flex-row items-center justify-between px-6 py-4 bg-gray-800 border-b border-gray-700 sticky top-0 z-40 shadow-md">
         <div className="flex items-center space-x-3 mb-4 md:mb-0">
@@ -144,17 +340,39 @@ function App() {
           <h1 className="text-xl font-bold tracking-tight text-white">杀软能力对比</h1>
         </div>
         
-        <div className="flex items-center gap-3 w-full md:w-auto">
+        <div className="flex items-center gap-3 w-full md:w-auto flex-wrap justify-center">
+            {/* Export/Import Group */}
+            <div className="flex items-center gap-2 mr-2">
+              <button 
+                onClick={handleExportCSV}
+                className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg transition-all text-sm font-medium border border-gray-600"
+                title="导出为CSV"
+              >
+                <Download size={16} />
+                <span className="hidden sm:inline">导出</span>
+              </button>
+              <button 
+                onClick={handleImportClick}
+                className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg transition-all text-sm font-medium border border-gray-600"
+                title="导入CSV"
+              >
+                <Upload size={16} />
+                <span className="hidden sm:inline">导入</span>
+              </button>
+            </div>
+
+            <div className="w-px h-6 bg-gray-600 mx-1 hidden md:block"></div>
+
            <button 
               onClick={() => setShowAddSoftware(true)}
-              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg transition-all text-sm font-medium border border-gray-600 hover:border-gray-500"
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg transition-all text-sm font-medium border border-gray-600 hover:border-gray-500"
             >
               <Plus size={16} />
               <span>添加软件</span>
             </button>
             <button 
               onClick={() => setShowAddDimension(true)}
-              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all text-sm font-medium shadow-lg shadow-blue-900/20"
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all text-sm font-medium shadow-lg shadow-blue-900/20"
             >
               <Plus size={16} />
               <span>添加对比维度</span>
